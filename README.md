@@ -16,7 +16,7 @@ conda init zsh
 
 source ~/.zshrc
 
-# 啟用環境
+# 啟用環境 - CLI都要先執行這個指令
 conda activate mlx_env
 ```
 
