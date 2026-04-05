@@ -10,6 +10,35 @@ import os
 import random
 from ecommerce_data import SYNONYM_DICT, raw_conversations
 
+MASTER_FILE = "data/master_conversations.jsonl"
+
+
+def load_master_conversations():
+    """
+    讀取 data/master_conversations.jsonl (由 generate_gemini_data.py 產出),
+    回傳 list[(user, assistant)] — 結構與 ecommerce_data.raw_conversations 同構,
+    可直接 extend 進種子資料後走相同的切分/增強流程。
+    檔案不存在時回傳空 list,讓流程可在未串接 Gemini 前先手動跑通。
+    """
+    if not os.path.exists(MASTER_FILE):
+        return []
+    pairs = []
+    with open(MASTER_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                user_msg = obj.get("user", "").strip()
+                assistant_msg = obj.get("assistant", "").strip()
+                if user_msg and assistant_msg:
+                    pairs.append((user_msg, assistant_msg))
+            except json.JSONDecodeError:
+                continue
+    return pairs
+
+
 def generate_ecommerce_dataset():
     if not os.path.exists("data"):
         os.makedirs("data")
@@ -47,12 +76,17 @@ def generate_ecommerce_dataset():
     # --- 資料增強函數結束 ---
 
     # 1. 將原始資料集分為訓練集和驗證集
-    random.shuffle(raw_conversations) # 打亂原始對話，確保隨機分割
+    # 來源 = ecommerce_data.raw_conversations (種子) + master_conversations.jsonl (Gemini 堆疊)
+    # 複製一份 raw_conversations,避免污染 import 進來的模組層級變數
+    all_conversations = list(raw_conversations) + load_master_conversations()
+    print(f"📚 資料來源: 種子 {len(raw_conversations)} 筆 + master {len(all_conversations) - len(raw_conversations)} 筆 = {len(all_conversations)} 筆")
+
+    random.shuffle(all_conversations) # 打亂原始對話，確保隨機分割
     # 通常會將約 10-20% 的資料用於驗證。這裡使用約 20%。
-    num_validation_samples = max(1, len(raw_conversations) // 5) 
-    
-    valid_raw_conversations = raw_conversations[:num_validation_samples]
-    train_raw_conversations = raw_conversations[num_validation_samples:]
+    num_validation_samples = max(1, len(all_conversations) // 5)
+
+    valid_raw_conversations = all_conversations[:num_validation_samples]
+    train_raw_conversations = all_conversations[num_validation_samples:]
 
     # 2. 處理訓練集：加入原始樣本並進行資料增強
     full_dataset = []

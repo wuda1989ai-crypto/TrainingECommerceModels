@@ -15,8 +15,13 @@ Thumbs.db
 # Model weights and adapters (Large files)
 adapters_output/
 
+# Generated training data (derived from ecommerce_data.py + master_conversations.jsonl)
+data/train.jsonl
+data/valid.jsonl
+
 # Logs
 training_log.txt
+daily_workflow.log
 
 # Virtual Environment
 venv/
