@@ -2,7 +2,7 @@
 #  generate_gemini_data.py
 #  TrainingECommerceModels
 #
-#  每日呼叫 Gemini 2.5 Pro 生成 1000 筆電商導購對話,
+#  每日呼叫 Gemini LLM 生成 1000 筆電商導購對話,
 #  以 tuple 格式 (user, assistant) append 到 data/master_conversations.jsonl。
 #
 #  去重策略 (B + C 組合):
@@ -32,13 +32,13 @@ except ImportError:
 # ---- 基本設定 ----------------------------------------------------------------
 PROJECT_DIR = Path(__file__).resolve().parent
 MASTER_FILE = PROJECT_DIR / "data" / "master_conversations.jsonl"
-MODEL_NAME = "gemini-3-flash-preview"
+MODEL_NAME = "gemini-2.5-flash" # gemini-3-flash-preview
 
-TARGET_COUNT = 50          # 每日目標新增筆數
-BATCH_SIZE = 25              # 每次 API 呼叫要幾筆 (控制輸出 token)
+TARGET_COUNT = 1000          # 要 AI 新增的筆數
+BATCH_SIZE = 25            # 每次 API 呼叫要幾筆 (控制輸出 token)
 MAX_CALLS = 5               # 安全上限,避免去重後補不滿無限呼叫
 RETRY_PER_CALL = 2           # 單一 batch 失敗重試次數
-SLEEP_BETWEEN_CALLS = 1.0    # 每次呼叫間隔 (秒),友善 rate limit
+SLEEP_BETWEEN_CALLS = 1.5    # 每次呼叫間隔 (秒),友善 rate limit
 
 # ---- Gemini 系統提示 ---------------------------------------------------------
 # 為了讓訓練資料貼近「真實電商流量」的樣態,此 prompt 強制 Gemini 在單一 batch
@@ -233,6 +233,9 @@ def main():
                     f"    ← 回應完成, 耗時 {elapsed:.1f}s, 解析得 {len(pairs)} 筆",
                     flush=True,
                 )
+                for i, (u, a) in enumerate(pairs, 1):
+                    print(f"    [{i:02d}] user: {u}")
+                    print(f"         Gemini 回答: {a}")
                 break
             except Exception as e:
                 elapsed = time.time() - t0

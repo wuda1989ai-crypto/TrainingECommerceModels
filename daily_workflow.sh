@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 # =============================================================================
-# daily_workflow.sh — 每日自動化訓練流程
-#
+# daily_workflow.sh
+# 每日自動化訓練流程
 # 流程:
 #   1. 呼叫 Gemini 生成新對話 (append 到 master_conversations.jsonl)
 #   2. 重新產生 train.jsonl / valid.jsonl

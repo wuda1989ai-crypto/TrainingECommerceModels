@@ -157,8 +157,6 @@ crontab -e
 | Step 4 | 執行 LoRA 訓練 1000 iters |
 | Step 5 | 解析 `training_log.txt`，比較末次 Val loss 與最低 Val loss，差距 > 0.15 則自動回捲到最佳 checkpoint |
 
-詳細流程說明見 `AUTOMATED_TRAINING.md`。
-
 ---
 
 ## 5. 重要路徑
