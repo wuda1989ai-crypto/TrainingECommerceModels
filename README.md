@@ -77,6 +77,19 @@ nohup python -m mlx_lm.lora \
   --adapter-path ./adapters_output > training_log.txt 2>&1 &
 ```
 
+**指令參數說明：**
+- `--model`：指定基座模型名稱或路徑。
+- `--train`：啟用訓練模式。
+- `--data`：訓練資料集所在目錄（內需包含 `train.jsonl` 與 `valid.jsonl`）。
+- `--iters`：總訓練疊代次數（Iterations）設定為 1000 次。
+- `--batch-size`：每次訓練的批次大小。在 16GB 記憶體的設備上，若發生記憶體不足（OOM），可考慮調降為 1。
+- `--steps-per-report`：每隔 10 個 step 在日誌中輸出一份損失值（Loss）報告。
+- `--steps-per-eval`：每隔 200 個 step 進行一次驗證集評估（Validation），計算 Val Loss。
+- `--save-every`：每隔 200 個 step 儲存一次模型權重 (Checkpoint)。
+- `--learning-rate`：設定學習率為 $10^{-5}$，這是微調常見的穩定數值。
+- `--adapter-path`：訓練完成的 LoRA 權重 (Adapter) 儲存目錄。
+- `> training_log.txt 2>&1 &`：將正常輸出與錯誤訊息合併導向至 `training_log.txt`，並在背景執行。
+
 > 注意：`--steps-per-eval` 與 `--save-every` 必須對齊（都設 200），確保最佳 Val loss 對應的 iter 有存 checkpoint，供過擬合回捲使用。
 
 長時間訓練時可開另一個終端機執行 `caffeinate -i` 防止系統睡眠。

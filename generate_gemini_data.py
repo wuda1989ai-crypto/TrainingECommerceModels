@@ -20,6 +20,7 @@ import re
 import sys
 import time
 import unicodedata
+from enum import Enum
 from pathlib import Path
 
 try:
@@ -29,10 +30,20 @@ except ImportError:
     sys.exit("❌ 請先安裝新版 SDK: pip install -q -U google-genai")
 
 
+# ---- 模型列表 ----------------------------------------------------------------
+class GeminiModel(str, Enum):
+    GEMINI_31_PRO_PREVIEW      = "gemini-3.1-pro-preview"
+    GEMINI_3_FLASH_PREVIEW     = "gemini-3-flash-preview"
+    GEMINI_31_FLASH_LITE       = "gemini-3.1-flash-lite-preview"
+    GEMINI_25_PRO              = "gemini-2.5-pro"
+    GEMINI_25_FLASH            = "gemini-2.5-flash"
+    GEMINI_25_FLASH_LITE       = "gemini-2.5-flash-lite"
+
+
 # ---- 基本設定 ----------------------------------------------------------------
 PROJECT_DIR = Path(__file__).resolve().parent
 MASTER_FILE = PROJECT_DIR / "data" / "master_conversations.jsonl"
-MODEL_NAME = "gemini-2.5-flash" # gemini-3-flash-preview
+MODEL_NAME = GeminiModel.GEMINI_25_FLASH_LITE  # ← 切換模型只需改這一行
 
 TARGET_COUNT = 1000          # 要 AI 新增的筆數
 BATCH_SIZE = 25            # 每次 API 呼叫要幾筆 (控制輸出 token)

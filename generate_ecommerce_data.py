@@ -8,7 +8,7 @@
 import json
 import os
 import random
-from ecommerce_data import SYNONYM_DICT, raw_conversations
+from ecommerce_data import SYNONYM_DICT, raw_conversations, multi_turn_conversations
 
 MASTER_FILE = "data/master_conversations.jsonl"
 
@@ -124,6 +124,26 @@ def generate_ecommerce_dataset():
                 {"role": "assistant", "content": assistant_msg}
             ]
         })
+
+    # 4. 加入多輪對話：切分 train/valid，不做增強（接續語境難以增強）
+    shuffled_multi = list(multi_turn_conversations)
+    random.shuffle(shuffled_multi)
+    num_multi_valid = max(1, len(shuffled_multi) // 5)
+    multi_valid = shuffled_multi[:num_multi_valid]
+    multi_train = shuffled_multi[num_multi_valid:]
+
+    for turns in multi_train:
+        messages = [{"role": "system", "content": system_prompt}]
+        messages += [{"role": role, "content": content} for role, content in turns]
+        full_dataset.append({"messages": messages})
+
+    for turns in multi_valid:
+        messages = [{"role": "system", "content": system_prompt}]
+        messages += [{"role": role, "content": content} for role, content in turns]
+        validation_dataset.append({"messages": messages})
+
+    random.shuffle(full_dataset)
+    print(f"  ↳ 多輪對話: 訓練 {len(multi_train)} 筆 / 驗證 {len(multi_valid)} 筆")
 
     with open("data/train.jsonl", "w", encoding="utf-8") as file:
         for item in full_dataset:
