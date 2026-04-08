@@ -46,7 +46,7 @@ MASTER_FILE = PROJECT_DIR / "data" / "master_conversations.jsonl"
 LATEST_FILE = PROJECT_DIR / "data" / "latest_generated_conversations.jsonl"
 MODEL_NAME = GeminiModel.GEMINI_25_FLASH_LITE  # ← 切換模型只需改這一行
 
-TARGET_COUNT = 1000          # 要 AI 新增的筆數
+TARGET_COUNT = 50          # 要 AI 新增的筆數
 BATCH_SIZE = 25            # 每次 API 呼叫要幾筆 (控制輸出 token)
 MAX_CALLS = 5               # 安全上限,避免去重後補不滿無限呼叫
 RETRY_PER_CALL = 2           # 單一 batch 失敗重試次數
@@ -262,6 +262,88 @@ def call_gemini_batch(client, n: int):
     return pairs
 
 
+# ---- 資料審查 ----------------------------------------------------------------
+def _serialize_as_messages(item):
+    """將 pair 轉為 mlx-lm 所需的 messages 格式 JSON 字串。"""
+    system_prompt = "你是一位親切、專業的電商導購助手，會根據用戶的需求給出實用的商品建議，並以問句結尾來引導對話。"
+    messages = [{"role": "system", "content": system_prompt}]
+    if isinstance(item, list):
+        for u, a in item:
+            messages.append({"role": "user", "content": u})
+            messages.append({"role": "assistant", "content": a})
+    else:
+        messages.append({"role": "user", "content": item[0]})
+        messages.append({"role": "assistant", "content": item[1]})
+    return json.dumps({"messages": messages}, ensure_ascii=False)
+
+
+def evaluate_data_quality(client, pairs):
+    skill_file = PROJECT_DIR / ".agents" / "skills" / "check-training-data" / "SKILL.md"
+    if not skill_file.exists():
+        print("⚠️ 找不到 check-training-data skill，跳過檢查")
+        return True
+
+    skill_prompt = skill_file.read_text(encoding="utf-8")
+    jsonl_str = "\n".join([_serialize_as_messages(item) for item in pairs])
+    
+    prompt = f"""請扮演資料品質審查員，並遵循以下 Skill 提示內的「檢查項目」、「潛在問題偵測」與「評級標準」，直接閱讀下列 JSONL 內容並進行分析。
+請注意：你不必編寫 Python 或 Bash 腳本，直接閱讀資料內容進行評估即可。
+在回覆的最後一段，請務必按照格式給出你的最終評級 (A/B/C/D)，例如：「最終評級：A」。
+
+=== Skill 內容 ===
+{skill_prompt}
+
+=== 待檢查的資料 ===
+{jsonl_str}
+"""
+    print("\n🧐 正在執行 check-training-data skill 檢查本次資料...", flush=True)
+    try:
+        response = client.models.generate_content(
+            model=GeminiModel.GEMINI_25_FLASH,
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(
+                temperature=0.2,
+            )
+        )
+        report = response.text
+        
+        print("\n" + "="*20 + " 品質檢查報告 " + "="*20)
+        print(report)
+        print("="*54 + "\n")
+        
+        import re
+        match = re.search(r'(?:最終評級|評級|等級)[\s：:]*([ABCD])', report, re.IGNORECASE)
+        if match:
+            grade = match.group(1).upper()
+            if grade in ['A', 'B']:
+                print(f"✅ 檢查通過 (判定評級: {grade})")
+                return True
+            else:
+                print(f"❌ 檢查未通過 (判定評級: {grade})")
+                return False
+        else:
+            last_part = report[-200:].upper()
+            if '評級：A' in last_part or '評級A' in last_part or '等級A' in last_part:
+                print("✅ 檢查通過 (預估評級: A)")
+                return True
+            elif '評級：B' in last_part or '評級B' in last_part or '等級B' in last_part:
+                print("✅ 檢查通過 (預估評級: B)")
+                return True
+            elif '評級：C' in last_part or '評級C' in last_part or '等級C' in last_part:
+                print("❌ 檢查未通過 (預估評級: C)")
+                return False
+            elif '評級：D' in last_part or '評級D' in last_part or '等級D' in last_part:
+                print("❌ 檢查未通過 (預估評級: D)")
+                return False
+            
+            print("⚠️ 無法明確解析評級，放棄新增。")
+            return False
+
+    except Exception as e:
+        print(f"⚠️ 檢查過程發生錯誤: {e}")
+        return False
+
+
 # ---- 主流程 ------------------------------------------------------------------
 def main():
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -354,6 +436,11 @@ def main():
 
     # 寫入 master 與 latest
     if accepted:
+        # 執行品質檢查
+        if not evaluate_data_quality(client, accepted):
+            print("🛑 因資料品質未達 A 或 B，已放棄此次新增，程式中斷。")
+            sys.exit(1)
+            
         append_to_master(accepted)
         write_to_latest(accepted)
 

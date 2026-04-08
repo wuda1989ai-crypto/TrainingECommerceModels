@@ -2,9 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+- 都用繁體中文回答
+
 ## 專案目的
 
-使用 Apple 的 `mlx-lm` 框架,在 Apple Silicon 上對 `mlx-community/Llama-3.2-3B-Instruct-4bit` 進行 LoRA 微調,目標是打造一個繁體中文的電商導購助手。
+使用 Apple 的 `mlx-lm` 框架,在 Apple Silicon 上對 `mlx-community/gemma-4-e2b-it-4bit` 進行 LoRA 微調,目標是打造一個繁體中文的電商導購助手。
 
 ## 開發環境
 
@@ -20,7 +22,7 @@ python3 generate_ecommerce_data.py
 背景執行 LoRA 訓練(log 寫到 `training_log.txt`):
 ```zsh
 nohup python -m mlx_lm.lora \
-  --model mlx-community/Llama-3.2-3B-Instruct-4bit \
+  --model mlx-community/gemma-4-e2b-it-4bit \
   --train --data ./data \
   --iters 500 --batch-size 2 --steps-per-report 10 \
   --learning-rate 1e-5 \

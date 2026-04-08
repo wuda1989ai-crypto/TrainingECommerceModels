@@ -17,7 +17,7 @@ set -euo pipefail
 PROJECT_DIR="/Users/wuda/Python/TrainingECommerceModels"
 ADAPTER_DIR="${PROJECT_DIR}/adapters_output"
 LOG_FILE="${PROJECT_DIR}/training_log.txt"
-ITERS=1000
+ITERS=600
 OVERFIT_THRESHOLD=0.15   # 末段 Val loss 比最低點高出多少視為過擬合
 CONDA_ENV="mlx_env"
 
@@ -47,23 +47,27 @@ fi
 # 注意: --steps-per-eval 與 --save-every 對齊為 200,確保 Val 最佳點必然有對應 checkpoint,
 #       否則過擬合發生時會找不到 {iter:07d}_adapters.safetensors 而退回 fallback 備份。
 echo "[4/5] 開始 LoRA 訓練 (${ITERS} iters)..."
-python -m mlx_lm.lora \
-  --model mlx-community/Llama-3.2-3B-Instruct-4bit \
+# 限制 GPU batch size,防止記憶體不足
+export MLX_MAX_BATCH_SIZE=16
+# 用 caffeinate 包裹訓練指令,防止 macOS 睡眠/GPU 降頻導致 Metal command buffer 被殺
+caffeinate -dims python -m mlx_lm lora \
+  --model mlx-community/gemma-4-e2b-it-4bit \
   --train \
   --data ./data \
   --iters "${ITERS}" \
-  --batch-size 2 \
+  --batch-size 1 \
   --steps-per-report 10 \
   --steps-per-eval 200 \
   --save-every 200 \
   --learning-rate 1e-5 \
+  --max-seq-length 512 \
   --adapter-path "${ADAPTER_DIR}" >> "${LOG_FILE}" 2>&1
 
 # ---- Step 5. 過擬合檢查 ------------------------------------------------------
 echo "[5/5] 檢查過擬合..."
 
 # 擷取「本次訓練」的 Val loss 記錄 (只看 log 尾段最後一次訓練)
-# mlx_lm.lora 訓練起始會輸出 "Starting training" 之類的訊息,這裡用
+# mlx_lm lora 訓練起始會輸出 "Starting training" 之類的訊息,這裡用
 # "Trainable parameters" 這行當作本次 run 的起點分隔符,較穩定。
 RUN_START_LINE=$(grep -n "Trainable parameters" "${LOG_FILE}" | tail -n 1 | cut -d: -f1)
 RUN_START_LINE=${RUN_START_LINE:-1}

@@ -16,13 +16,15 @@ MASTER_FILE = "data/master_conversations.jsonl"
 def load_master_conversations():
     """
     讀取 data/master_conversations.jsonl (由 generate_gemini_data.py 產出),
-    回傳 list[(user, assistant)] — 結構與 ecommerce_data.raw_conversations 同構,
-    可直接 extend 進種子資料後走相同的切分/增強流程。
-    檔案不存在時回傳空 list,讓流程可在未串接 Gemini 前先手動跑通。
+    回傳 (single_turn, multi_turn):
+      single_turn — list[(user, assistant)]，與 ecommerce_data.raw_conversations 同構
+      multi_turn  — list[list[(role, content)]]，與 ecommerce_data.multi_turn_conversations 同構
+    檔案不存在時回傳兩個空 list。
     """
     if not os.path.exists(MASTER_FILE):
-        return []
-    pairs = []
+        return [], []
+    single_turn = []
+    multi_turn = []
     with open(MASTER_FILE, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -30,13 +32,25 @@ def load_master_conversations():
                 continue
             try:
                 obj = json.loads(line)
-                user_msg = obj.get("user", "").strip()
-                assistant_msg = obj.get("assistant", "").strip()
-                if user_msg and assistant_msg:
-                    pairs.append((user_msg, assistant_msg))
-            except json.JSONDecodeError:
+                if "turns" in obj and isinstance(obj["turns"], list):
+                    # 多輪對話: 轉換為 [("user", "..."), ("assistant", "..."), ...] 格式
+                    turns = []
+                    for turn in obj["turns"]:
+                        u = turn.get("user", "").strip()
+                        a = turn.get("assistant", "").strip()
+                        if u and a:
+                            turns.append(("user", u))
+                            turns.append(("assistant", a))
+                    if len(turns) >= 4:  # 至少 2 輪 (2 組 user+assistant)
+                        multi_turn.append(turns)
+                else:
+                    user_msg = obj.get("user", "").strip()
+                    assistant_msg = obj.get("assistant", "").strip()
+                    if user_msg and assistant_msg:
+                        single_turn.append((user_msg, assistant_msg))
+            except (json.JSONDecodeError, KeyError):
                 continue
-    return pairs
+    return single_turn, multi_turn
 
 
 def generate_ecommerce_dataset():
@@ -78,8 +92,10 @@ def generate_ecommerce_dataset():
     # 1. 將原始資料集分為訓練集和驗證集
     # 來源 = ecommerce_data.raw_conversations (種子) + master_conversations.jsonl (Gemini 堆疊)
     # 複製一份 raw_conversations,避免污染 import 進來的模組層級變數
-    all_conversations = list(raw_conversations) + load_master_conversations()
-    print(f"📚 資料來源: 種子 {len(raw_conversations)} 筆 + master {len(all_conversations) - len(raw_conversations)} 筆 = {len(all_conversations)} 筆")
+    master_single, master_multi = load_master_conversations()
+    all_conversations = list(raw_conversations) + master_single
+    print(f"📚 資料來源: 種子 {len(raw_conversations)} 筆 + master 單輪 {len(master_single)} 筆 = {len(all_conversations)} 筆")
+    print(f"  ↳ master 多輪對話: {len(master_multi)} 筆")
 
     random.shuffle(all_conversations) # 打亂原始對話，確保隨機分割
     # 通常會將約 10-20% 的資料用於驗證。這裡使用約 20%。
@@ -126,7 +142,8 @@ def generate_ecommerce_dataset():
         })
 
     # 4. 加入多輪對話：切分 train/valid，不做增強（接續語境難以增強）
-    shuffled_multi = list(multi_turn_conversations)
+    # 合併種子多輪 + master 多輪
+    shuffled_multi = list(multi_turn_conversations) + master_multi
     random.shuffle(shuffled_multi)
     num_multi_valid = max(1, len(shuffled_multi) // 5)
     multi_valid = shuffled_multi[:num_multi_valid]

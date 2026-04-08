@@ -2,8 +2,10 @@
 
 本專案旨在為電子商務場景微調大型語言模型（LLM），使其具備專業導購與客戶服務的能力。專案採用 Apple Silicon 優化的 `mlx-lm` 框架。
 
+- 都用繁體中文回答
+
 ## 專案概述
-- **基礎模型**: `mlx-community/Llama-3.2-3B-Instruct-4bit`
+- **基礎模型**: `mlx-community/gemma-4-e2b-it-4bit`
 - **技術路徑**: 使用 LoRA (Low-Rank Adaptation) 技術進行微調。
 - **應用場景**: 包含夏季鞋款推薦、長輩禮物建議、戶外服飾挑選等電商導購對話。
 
@@ -25,7 +27,7 @@ python generate_ecommerce_data.py
 使用 MLX 進行訓練，預設配置為 500 次迭代，每 100 次保存一次權重：
 ```bash
 python -m mlx_lm.lora \
-  --model mlx-community/Llama-3.2-3B-Instruct-4bit \
+  --model mlx-community/gemma-4-e2b-it-4bit \
   --data ./data \
   --train \
   --iters 500 \
@@ -39,7 +41,7 @@ python -m mlx_lm.lora \
 載入微調後的適配器進行對話測試：
 ```bash
 python -m mlx_lm.generate \
-  --model mlx-community/Llama-3.2-3B-Instruct-4bit \
+  --model mlx-community/gemma-4-e2b-it-4bit \
   --adapter-path ./adapters_output \
   --prompt "<|user|>\n我想找適合夏天穿的慢跑鞋\n<|assistant|>\n"
 ```

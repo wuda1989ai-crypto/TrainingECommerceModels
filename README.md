@@ -1,6 +1,6 @@
 # 繁體中文電商導購助手 — 訓練筆記
 
-基座模型：`mlx-community/Llama-3.2-3B-Instruct-4bit`（Apple MLX 4bit 量化 Llama-3.2-3B Instruct）
+基座模型：`mlx-community/gemma-4-e2b-it-4bit`（Apple MLX 4bit 量化 Gemma 4 E2B Instruct）
 訓練框架：`mlx-lm` LoRA 微調，在 Apple Silicon 上執行。
 
 ---
@@ -64,20 +64,22 @@ python3 generate_ecommerce_data.py
 
 ```zsh
 # 背景執行，log 寫到 training_log.txt
-nohup python -m mlx_lm.lora \
-  --model mlx-community/Llama-3.2-3B-Instruct-4bit \
+  export MLX_MAX_BATCH_SIZE=16 && nohup python -m mlx_lm lora \
+  --model mlx-community/gemma-4-e2b-it-4bit \
   --train \
   --data ./data \
-  --iters 1000 \
-  --batch-size 2 \
+  --iters 600 \
+  --batch-size 1 \
   --steps-per-report 10 \
   --steps-per-eval 200 \
   --save-every 200 \
   --learning-rate 1e-5 \
+  --max-seq-length 512 \
   --adapter-path ./adapters_output > training_log.txt 2>&1 &
 ```
 
 **指令參數說明：**
+- `export MLX_MAX_BATCH_SIZE=16`：限制 GPU batch size,防止記憶體不足。
 - `--model`：指定基座模型名稱或路徑。
 - `--train`：啟用訓練模式。
 - `--data`：訓練資料集所在目錄（內需包含 `train.jsonl` 與 `valid.jsonl`）。
@@ -106,14 +108,13 @@ tail -f training_log.txt
 
 ```zsh
 python -m mlx_lm.generate \
-  --model mlx-community/Llama-3.2-3B-Instruct-4bit \
+  --model mlx-community/gemma-4-e2b-it-4bit \
   --adapter-path ./adapters_output \
-  --prompt "<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+  --prompt "<start_of_turn>user
+你是一位親切、專業的電商導購助手，會根據用戶的需求給出實用的商品建議，並以問句結尾來引導對話。
 
-你是一位親切、專業的電商導購助手，會根據用戶的需求給出實用的商品建議，並以問句結尾來引導對話。<|eot_id|><|start_header_id|>user<|end_header_id|>
-
-高CP值的nvidia顯卡<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-
+高CP值的nvidia顯卡<end_of_turn>
+<start_of_turn>model
 " \
   --max-tokens 200
 ```
