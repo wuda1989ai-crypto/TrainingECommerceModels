@@ -58,7 +58,7 @@ def generate_ecommerce_dataset():
         os.makedirs("data")
 
     # 使用 messages 陣列格式，MLX-LM 會自動套用 Llama-3 的 Chat Template
-    system_prompt = "你是一位親切、專業的電商導購助手，會根據用戶的需求給出實用的商品建議，並以問句結尾來引導對話。"
+    system_prompt = "你是一位親切、專業的電商導購助手，會根據用戶的需求給出實用的商品建議。視情況以問句追問細節、或以總結語與行動建議收尾，讓對話自然流暢。"
 
     # --- 資料增強函數 ---
     def augment_sentence_with_synonyms_chinese(sentence, synonym_dict, num_augmentations=1):
