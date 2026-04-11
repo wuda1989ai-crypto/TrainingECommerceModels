@@ -151,10 +151,28 @@ source ~/.zshrc
 chmod +x daily_workflow.sh
 ```
 
+### 訓練模式 (TRAIN_MODE)
+
+`daily_workflow.sh` 用 `TRAIN_MODE` 環境變數切換兩種訓練策略,兩個值都是 zsh 內的 readonly enum 常數,拼錯會直接被擋下並列出合法值:
+
+| 值 | 用途 | 行為 |
+|---|------|------|
+| `resume` (預設) | **日常累積** | 加 `--resume-adapter-file`,在既有 `adapters.safetensors` 上延續訓練。權重連續、磁碟不增加。適合每天跑。 |
+| `fuse` | **階段性整理** | 先用 `mlx_lm fuse` 把現有 adapter 烙進 base model,產出 `./fused_model/`,再清空 adapter 從 random init 重新訓一顆。適合累積一段時間後把 LoRA 合併進基座,避免 rank 被撐住。 |
+
+一旦執行過 `fuse` 模式,`./fused_model/` 就成為新的真實基座,之後不論 `resume` 或 `fuse` 都會自動偵測並以 `fused_model` 作為 `--model`(無需手動改腳本)。因此 Section 3 的推理範例在 fuse 過後,`--model` 應改為 `./fused_model`,否則會用錯基座。
+
 ### 手動執行（測試用）
 
 ```zsh
+# 預設 resume (延續訓練)
 ./daily_workflow.sh 2>&1 | tee daily_workflow.log
+
+# 等價寫法
+TRAIN_MODE=resume ./daily_workflow.sh 2>&1 | tee daily_workflow.log
+
+# 切換到 fuse (融合 + 重訓)
+TRAIN_MODE=fuse   ./daily_workflow.sh 2>&1 | tee daily_workflow.log
 ```
 
 ### 設定每日排程（Crontab）
@@ -163,10 +181,16 @@ chmod +x daily_workflow.sh
 crontab -e
 ```
 
-加入以下內容（每天凌晨 3 點執行）：
+加入以下內容（每天凌晨 3 點執行 resume 模式）：
 
 ```
 0 3 * * * cd /Users/wuda/Python/TrainingECommerceModels && ./daily_workflow.sh >> daily_workflow.log 2>&1
+```
+
+若要讓 cron 直接跑 `fuse` 模式(例如每週日整理一次),在指令前加 `TRAIN_MODE=fuse`:
+
+```
+0 4 * * 0 cd /Users/wuda/Python/TrainingECommerceModels && TRAIN_MODE=fuse ./daily_workflow.sh >> daily_workflow.log 2>&1
 ```
 
 > ⚠️ cron 的 log 導向 `daily_workflow.log`，不要導向 `training_log.txt`，否則會干擾過擬合偵測的 log 解析。
@@ -177,9 +201,9 @@ crontab -e
 |------|------|
 | Step 1 | 呼叫 Gemini API 生成最多 50 筆新對話,經過 (a) batch 內三道過濾(過短/重複/異常字元) (b) 與 master 兩階段去重 (c) Python 機械評級,**只有 A/B 級才** append 到 `master_conversations.jsonl`,同時覆蓋寫入 `latest_generated_conversations.jsonl` |
 | Step 2 | 重新產生 `train.jsonl` / `valid.jsonl`(合併種子 + master,單輪做同義詞增強) |
-| Step 3 | 備份當前 `adapters.safetensors` 為 `.bak`(rollback fallback) |
+| Step 3 | **依 `TRAIN_MODE` 分支準備訓練起點:**<br>• `resume`: 備份當前 `adapters.safetensors` 為 `.bak`,訓練指令加上 `--resume-adapter-file` 接既有權重繼續學<br>• `fuse`: `mlx_lm fuse` 把現有 adapter 烙進當前基座→寫到 `fused_model.tmp`→原子替換 `./fused_model/`→清空 `adapters.safetensors`→訓練從 random init 重新開始。**不建立 `.bak`**(舊 adapter 已烙進模型,再套回等於雙重加成)<br>• 兩種模式都會在開頭偵測 `./fused_model/` 是否存在,存在即作為 `--model` |
 | Step 4 | `caffeinate -dims` 包裹的 LoRA 訓練 600 iters,`MLX_MAX_BATCH_SIZE=16` |
-| Step 5 | 解析 `training_log.txt` 本次 run 的 Val loss,若 `LAST - BEST > OVERFIT_THRESHOLD` (0.15) 則 cp 最佳 checkpoint(`{BEST_ITER:07d}_adapters.safetensors`)覆蓋 `adapters.safetensors`;找不到對應 checkpoint 時改還原 `.bak` 備份 |
+| Step 5 | 解析 `training_log.txt` 本次 run 的 Val loss,若 `LAST - BEST > OVERFIT_THRESHOLD` (0.15) 則 cp 最佳 checkpoint(`{BEST_ITER:07d}_adapters.safetensors`)覆蓋 `adapters.safetensors`。找不到對應 checkpoint 時:<br>• `resume` 模式還原 `.bak` 備份<br>• `fuse` 模式直接刪除 `adapters.safetensors`,退回「純 fused_model 無 adapter」狀態 |
 
 ---
 
@@ -188,9 +212,10 @@ crontab -e
 | 路徑 | 說明 |
 |------|------|
 | `adapters_output/adapters.safetensors` | 當前使用的 LoRA 權重 |
-| `adapters_output/adapters.safetensors.bak` | 訓練前備份（過擬合 fallback rollback 用,訓練完成後會清除） |
+| `adapters_output/adapters.safetensors.bak` | 訓練前備份(**僅 `resume` 模式建立**,過擬合 fallback 用,訓練完成後會清除) |
 | `adapters_output/{iter:07d}_adapters.safetensors` | 各 iter 的 checkpoint |
 | `adapters_output/adapter_config.json` | LoRA 設定 |
+| `fused_model/` | 跑過 `TRAIN_MODE=fuse` 後產生的新基座(base model + 已烙入的舊 adapter)。存在即代表後續訓練與推理都應以此為 `--model` |
 | `data/master_conversations.jsonl` | Gemini 累積生成的對話池(append-only) |
 | `data/latest_generated_conversations.jsonl` | 僅本次 Gemini 執行接受的對話(每次覆蓋) |
 | `training_log.txt` | 訓練 log(`mlx_lm lora` 輸出,`daily_workflow.sh` 用其末段解析過擬合) |
